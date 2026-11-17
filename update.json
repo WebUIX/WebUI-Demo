@@ -1,6 +1,6 @@
 {
-    "version": "v3.3.3",
-    "versionCode": 333,
+    "version": "v3.3.4",
+    "versionCode": 334,
     "zipUrl": "https://github.com/WebUIX/WebUI-Demo/releases/latest/download/WebUI_X_Demo.zip",
     "changelog": "https://raw.githubusercontent.com/WebUIX/WebUI-Demo/main/CHANGELOG.md"
 }

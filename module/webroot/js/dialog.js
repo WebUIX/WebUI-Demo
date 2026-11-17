@@ -13,7 +13,7 @@ const mxDialogButton = (type, options) => {
   const button = document.createElement("button");
   button.className = "btn ripple-element";
   button.textContent = `Open ${type} dialog`;
-  button.onclick = () => window.webui[type](options);
+  button.onclick = () => webui[type](options);
 
   return button;
 };
@@ -49,7 +49,7 @@ const cards = [
       { type: "description", content: "Ask the user to confirm an action and return a async boolean result." },
       {
         type: "interactive",
-        content: dialogButton("confirm", { title: "Delete item?", message: "This action cannot be undone.", theme: "md3", buttons: { confirmText: "Delete", cancelText: "Keep" } }),
+        content: mxDialogButton("confirm", { title: "Delete item?", message: "This action cannot be undone.", theme: "md3", buttons: { confirmText: "Delete", cancelText: "Keep" } }),
       },
       {
         type: "code",
@@ -69,7 +69,7 @@ const cards = [
       { type: "description", content: "Ask the user for input and return the result as async." },
       {
         type: "interactive",
-        content: dialogButton("prompt", {
+        content: mxDialogButton("prompt", {
           title: "Enter your name",
           message: "Enter it!!",
           default: "",

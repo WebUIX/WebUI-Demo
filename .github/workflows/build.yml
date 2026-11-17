@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 env:
-  RELEASE_ZIPNAME: 'KSU_WebUI_demo'
+  RELEASE_ZIPNAME: 'WebUI_X_Demo'
 
 jobs:
   build:

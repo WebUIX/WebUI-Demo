@@ -1,8 +1,10 @@
 import { io, toast } from '../assets/kernelsu.js';
 import { actionButton, renderPage } from './utils.js';
 
-const DEFAULT_PATH = '/data/adb/ksu-file-api-demo.txt';
-const DEFAULT_RANDOM_ACCESS_PATH = '/data/adb/ksu-random-access-demo.bin';
+const ADB_PATH = mod.adbPath
+const MODULE_PATH = mod.path.moduleDir;
+const DEFAULT_PATH = MODULE_PATH + '/ksu-file-api-demo.txt';
+const DEFAULT_RANDOM_ACCESS_PATH = MODULE_PATH + '/ksu-random-access-demo.bin';
 
 const supportCode = `
 import { io, toast } from 'kernelsu';
@@ -19,7 +21,7 @@ if (io.support) {
 const fileCode = `
 import { io } from 'kernelsu';
 
-const file = io.File('/data/adb/modules');
+const file = io.File('${ADB_PATH.modulesDir}');
 
 const result = {
     path: file.getPath(),
@@ -49,7 +51,7 @@ const outputCode = `
 import { io } from 'kernelsu';
 
 const writer = io.FileOutputStream();
-const id = writer.open('/data/adb/ksu-file-api-demo.txt');
+const id = writer.open('${DEFAULT_PATH}');
 if (!id || !writer.write(id, btoa('Hello from KernelSU!'))) {
     throw new Error('Failed to write file');
 }
@@ -61,7 +63,7 @@ const inputCode = `
 import { io } from 'kernelsu';
 
 const reader = io.FileInputStream();
-const id = reader.open('/data/adb/ksu-file-api-demo.txt');
+const id = reader.open('${DEFAULT_PATH}');
 if (!id) throw new Error('Failed to open file');
 
 let text = '';
@@ -75,7 +77,7 @@ const randomAccessCode = `
 import { io } from 'kernelsu';
 
 const random = io.RandomAccessFile();
-const id = random.open('/data/adb/ksu-random-access-demo.bin', 'rw');
+const id = random.open('${DEFAULT_RANDOM_ACCESS_PATH}', 'rw');
 if (!id) throw new Error('Failed to open file');
 
 random.seek(id, 16);
@@ -195,7 +197,7 @@ function inspectFile(path) {
 }
 
 function createFileDemo() {
-    const path = createControl({ label: 'Path', value: '/data/adb/modules' });
+    const path = createControl({ label: 'Path', value: ADB_PATH.modulesDir });
     return createDemo({
         controls: [path],
         buttonLabel: 'Inspect path',

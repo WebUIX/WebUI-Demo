@@ -4,6 +4,7 @@
     "windowResize": false,
     "backHandler": false,
     "exitConfirm": true,
+    "permissions": ["kernelsu.permission.SHELL", "kernelsu.permission.IO", "kernelsu.permission.PM", "mx.permission.IO"],
     "_description": [
         "remove this description",
         "config file for Webui X.",

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Device Performance HUD</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --panel: rgb(12, 14, 18);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: rgba(244, 245, 248, 0.92);
+    --muted: rgba(235, 238, 245, 0.50);
+    --cpu: #a78bfa;
+    --ram: #5eead4;
+    --fps: #fbbf24;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: none !important;
+    user-select: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent !important;
+    font-family: Roboto, "Arial", sans-serif;
+  }
+
+  #hud {
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    width: 136px;
+    padding: 8px 10px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 7px;
+  }
+
+  .heading-title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .live {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+  }
+
+  #state {
+    color: var(--muted);
+    font-size: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+  }
+
+  .metric:first-of-type { margin-top: 0; }
+
+  .metric-badge {
+    padding: 2px 5px;
+    border-radius: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+
+  .cpu .metric-badge { color: var(--cpu); background: rgba(167, 139, 250, 0.14); }
+  .ram .metric-badge { color: var(--ram); background: rgba(94, 234, 212, 0.13); }
+  .fps .metric-badge { color: var(--fps); background: rgba(251, 191, 36, 0.14); }
+
+  .metric-value {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    text-align: right;
+  }
+
+  .metric-value small {
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 600;
+    margin-left: 1px;
+  }
+
+  .bar {
+    height: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .bar-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    transition: width 0.3s ease;
+  }
+
+  .cpu .bar-fill { background: var(--cpu); }
+  .ram .bar-fill { background: var(--ram); }
+
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 7px;
+    padding-top: 5px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #error { color: #fca5a5; }
+</style>
+</head>
+<body>
+  <section id="hud" aria-label="Device performance">
+    <header class="heading">
+      <div class="heading-title">
+        <span class="live"></span>
+        MONITOR
+      </div>
+      <span id="state">INIT</span>
+    </header>
+
+    <div class="metric cpu">
+      <span class="metric-badge">CPU</span>
+      <div class="metric-value"><span id="cpu">--</span><small>%</small></div>
+    </div>
+    <div class="bar cpu"><div class="bar-fill" id="cpu-bar"></div></div>
+
+    <div class="metric ram">
+      <span class="metric-badge">RAM</span>
+      <div class="metric-value"><span id="ram">--</span><small>%</small></div>
+    </div>
+    <div class="bar ram"><div class="bar-fill" id="ram-bar"></div></div>
+
+    <div class="metric fps">
+      <span class="metric-badge">FPS</span>
+      <div class="metric-value"><span id="fps">--</span></div>
+    </div>
+
+    <footer class="footer">
+      <span id="memory-detail">-- / -- MB</span>
+      <span id="error"></span>
+    </footer>
+  </section>
+
+<script>
+(function () {
+  'use strict';
+
+  if (window.__deviceHudStarted) return;
+  window.__deviceHudStarted = true;
+
+  var UPDATE_MS = 1200;
+  var previousCpu = null;
+  var running = false;
+  var timer = null;
+  var callbackCounter = 0;
+
+  var $ = function (id) {
+    return document.getElementById(id);
+  };
+
+  function setText(id, value) {
+    var el = $(id);
+    if (el) el.textContent = value;
+  }
+
+  function setBar(id, value) {
+    var el = $(id);
+    if (el) el.style.width = Math.max(0, Math.min(100, value)) + '%';
+  }
+
+  function exec(command) {
+    return new Promise(function (resolve, reject) {
+      if (!window.ksu || typeof window.ksu.exec !== 'function') {
+        reject(new Error('No KSU'));
+        return;
+      }
+
+      var name = '__hud_exec_' + Date.now() + '_' + callbackCounter++;
+      var settled = false;
+
+      function cleanup() {
+        delete window[name];
+      }
+
+      window[name] = function (errno, stdout, stderr) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+
+        if (Number(errno) !== 0) {
+          reject(new Error(String(stderr || 'Err ' + errno)));
+          return;
+        }
+
+        resolve(String(stdout || ''));
+      };
+
+      try {
+        window.ksu.exec(command, JSON.stringify({}), name);
+      } catch (error) {
+        settled = true;
+        cleanup();
+        reject(error);
+      }
+    });
+  }
+
+  /*
+   * Multi-source FPS calculation for Android 10–15+:
+   * 1. Kernel DRM/GPU measured_fps sysfs node (fastest & most accurate if exposed)
+   * 2. SurfaceFlinger --latency on active foreground layer (filtering out INT64_MAX pending timestamps)
+   * 3. dumpsys gfxinfo <pkg> framestats fallback for modern BLAST / SurfaceView layers
+   */
+  var COMMAND = String.raw`
+printf '%s\n' '__HUD_CPU__'
+head -n 1 /proc/stat
+
+printf '%s\n' '__HUD_MEM__'
+grep -E '^(MemTotal|MemAvailable|MemFree|Buffers|Cached):' /proc/meminfo
+
+printf '%s\n' '__HUD_FPS__'
+fps=""
+
+# 1. Check kernel DRM/GPU FPS nodes first (Qualcomm / MediaTek / DRM)
+for node in /sys/class/drm/sde-crtc-0/measured_fps /sys/class/drm/card0/device/measured_fps /sys/devices/platform/soc/*.qcom,mdss_mdp/drm/card0/sde-crtc-0/measured_fps; do
+  if [ -r "$node" ]; then
+    val="$(awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+(\.[0-9]+)?$/ && $i > 0) { printf "%d", $i + 0.5; exit }}' "$node" 2>/dev/null)"
+    if [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null; then
+      fps="$val"
+      break
+    fi
+  fi
+done
+
+# 2. SurfaceFlinger latency on focused app
+if [ -z "$fps" ]; then
+  pkg="$(dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | sed -E 's#.* ([A-Za-z0-9_.]+)/.*#\1#')"
+  [ -z "$pkg" ] && pkg="$(dumpsys window 2>/dev/null | grep -m1 -E 'mCurrentFocus|mFocusedApp' | sed -E 's#.* ([A-Za-z0-9_.]+)/.*#\1#')"
+
+  if [ -n "$pkg" ]; then
+    # Try matching layers (prefer SurfaceView/BLAST or main app layer)
+    layers="$(dumpsys SurfaceFlinger --list 2>/dev/null | grep -F "$pkg")"
+    if [ -n "$layers" ]; then
+      IFS='
+'
+      for layer in $layers; do
+        res="$(dumpsys SurfaceFlinger --latency "$layer" 2>/dev/null | awk '
+          NR > 1 && $2 ~ /^[0-9]+$/ && $2 > 0 && $2 < 9000000000000000000 {
+            if (first == 0) first = $2;
+            last = $2;
+            count++;
+          }
+          END {
+            if (count > 2 && (last - first) > 50000000) {
+              val = int((count - 1) * 1000000000 / (last - first) + 0.5);
+              if (val > 0 && val <= 240) print val;
+            }
+          }')"
+        if [ -n "$res" ]; then
+          fps="$res"
+          break
+        fi
+      done
+      unset IFS
+    fi
+
+    # 3. Fallback: dumpsys gfxinfo framestats (works on Android 12+ BLAST layers)
+    if [ -z "$fps" ]; then
+      fps="$(dumpsys gfxinfo "$pkg" framestats 2>/dev/null | awk -F',' '
+        /^0,/ {
+          # Column 2 = INTENDED_VSYNC, Column 14 = FRAME_COMPLETED (ns)
+          ts = $2 + 0;
+          if (ts > 0 && ts < 9000000000000000000) {
+            if (first == 0) first = ts;
+            last = ts;
+            count++;
+          }
+        }
+        END {
+          if (count > 2 && (last - first) > 50000000) {
+            val = int((count - 1) * 1000000000 / (last - first) + 0.5);
+            if (val > 0 && val <= 240) print val;
+          }
+        }')"
+    fi
+  fi
+fi
+
+if [ -n "$fps" ]; then
+  printf 'FPS=%s\n' "$fps"
+else
+  echo 'FPS=--'
+fi
+`;
+
+  function parseMeminfo(output) {
+    var values = {};
+    output.split(/\r?\n/).forEach(function (line) {
+      var match = line.match(/^([A-Za-z]+):\s+(\d+)/);
+      if (match) values[match[1]] = Number(match[2]);
+    });
+
+    var total = values.MemTotal || 0;
+    var available = values.MemAvailable;
+
+    if (available == null) {
+      available = (values.MemFree || 0) +
+        (values.Buffers || 0) +
+        (values.Cached || 0);
+    }
+
+    if (!total) return null;
+
+    var used = Math.max(0, total - available);
+
+    return {
+      total: total,
+      used: used,
+      percent: used / total * 100
+    };
+  }
+
+  function parseCpu(line) {
+    var parts = line.trim().split(/\s+/);
+    if (parts[0] !== 'cpu' || parts.length < 5) return null;
+
+    var values = parts.slice(1).map(Number);
+    var idle = values[3] + (values[4] || 0);
+    var total = values.reduce(function (sum, value) {
+      return sum + value;
+    }, 0);
+
+    return { idle: idle, total: total };
+  }
+
+  function calculateCpu(current) {
+    if (!current) return null;
+
+    var result = null;
+
+    if (previousCpu) {
+      var totalDelta = current.total - previousCpu.total;
+      var idleDelta = current.idle - previousCpu.idle;
+
+      if (totalDelta > 0) {
+        result = Math.max(0, Math.min(
+          100,
+          (totalDelta - idleDelta) / totalDelta * 100
+        ));
+      }
+    }
+
+    previousCpu = current;
+    return result;
+  }
+
+  function parseOutput(output) {
+    var cpuLine = '';
+    var memLines = [];
+    var fpsLine = '--';
+    var section = '';
+
+    output.split(/\r?\n/).forEach(function (line) {
+      if (line === '__HUD_CPU__') { section = 'cpu'; return; }
+      if (line === '__HUD_MEM__') { section = 'mem'; return; }
+      if (line === '__HUD_FPS__') { section = 'fps'; return; }
+
+      if (section === 'cpu' && line.indexOf('cpu ') === 0) {
+        cpuLine = line;
+      } else if (section === 'mem') {
+        memLines.push(line);
+      } else if (section === 'fps' && line.indexOf('FPS=') === 0) {
+        fpsLine = line.substring(4).trim();
+      }
+    });
+
+    return {
+      cpu: calculateCpu(parseCpu(cpuLine)),
+      ram: parseMeminfo(memLines.join('\n')),
+      fps: fpsLine
+    };
+  }
+
+  function render(data) {
+    if (data.cpu != null) {
+      var cpu = Math.round(data.cpu);
+      setText('cpu', String(cpu));
+      setBar('cpu-bar', cpu);
+    }
+
+    if (data.ram) {
+      var ram = data.ram;
+      var percent = Math.round(ram.percent);
+      var usedGb = (ram.used / 1048576).toFixed(1);
+      var totalGb = (ram.total / 1048576).toFixed(1);
+
+      setText('ram', String(percent));
+      setBar('ram-bar', percent);
+      setText('memory-detail', usedGb + '/' + totalGb + 'G');
+    }
+
+    setText('fps', data.fps || '--');
+    setText('state', 'LIVE');
+    setText('error', '');
+  }
+
+  function update() {
+    if (running || document.hidden) return;
+    running = true;
+
+    exec(COMMAND)
+      .then(function (output) {
+        render(parseOutput(output));
+      })
+      .catch(function (error) {
+        setText('state', 'ERR');
+        setText('error', error && error.message
+          ? error.message.substring(0, 12)
+          : 'ERR');
+      })
+      .then(function () {
+        running = false;
+      });
+  }
+
+  function start() {
+    if (timer) clearInterval(timer);
+    update();
+    timer = setInterval(update, UPDATE_MS);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) update();
+  });
+
+  start();
+})();
+</script>
+</body>
+</html>
